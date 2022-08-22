@@ -1,0 +1,38 @@
+name: Lint
+
+on:
+  pull_request:
+    branches: [ main ]
+  push:
+    branches: [ main ]
+
+jobs:
+  lint-black:
+    runs-on: ubuntu-20.04
+    steps:
+      - uses: actions/checkout@v2
+
+      - name: Setup Python
+        uses: actions/setup-python@v2
+        with:
+          python-version: 3.6.9
+
+      - name: Run black linter for python
+        run: |
+          pip install black
+          black . --check
+
+  lint-isort:
+    runs-on: ubuntu-20.04
+    steps:
+      - uses: actions/checkout@v2
+
+      - name: Setup Python
+        uses: actions/setup-python@v2
+        with:
+          python-version: 3.6.9
+
+      - name: isort your imports, so you don't have to.
+        run: |
+          pip install isort
+          isort . -c -v
