@@ -164,8 +164,56 @@ def update_secret(secret_file, update_data):
     run_kubeseal(secret_file, namespace)
 
 
+@click.command()
+@click.argument("secret_file", type=click.Path(exists=True))
+@click.option(
+    "-d", "--data", "add_data", type=click.STRING, multiple=True, default=None
+)
+def add_secret(secret_file, add_data):
+    """Command to add new keys to sealed secrets.
+
+    :option: data - Option for adding a new secret value by providing secret name in key value pair
+
+    Example: python cli/main.py add-secret cap/environments/cap-qa/sealedsecrets/cap-creds.yml -d FLOWER_USER:NEW_VAL -d FLOWER_PASSWORD:MY_VAL
+    """
+    logging.info(
+        "Reading yml file...",
+    )
+    with open(secret_file, "r") as tmp:
+        data = yaml.safe_load(tmp)
+    if not data:
+        logging.error("No data present. Please check your secret file!")
+        sys.exit(1)
+
+    namespace = data.get("metadata").get("namespace")
+    secret_name = data.get("metadata").get("name")
+    base64_data = get_base64data(namespace, secret_name)
+    base64_data_keys = base64_data.get("data").keys()
+
+    if not add_data:
+        logging.error("Please provide keys to add!")
+        sys.exit(1)
+
+    requested_addition = dict(secret.split(":", 1) for secret in add_data)
+    for k, v in requested_addition.items():
+        if validate_key(base64_data_keys, k):
+            logging.error("Key {} already present. Please use update-secret command.")
+            sys.exit(1)
+        update_key(base64_data, k, v)
+
+    # Keeping required metadata only
+    base64_data["metadata"] = {"name": secret_name, "namespace": namespace}
+    base64_data.pop("type", None)
+
+    with open("tmp", "w") as tmp:
+        yaml.dump(base64_data, tmp)
+
+    run_kubeseal(secret_file, namespace)
+
+
 secret_manager.add_command(view_secret)
 secret_manager.add_command(update_secret)
+secret_manager.add_command(add_secret)
 
 
 if __name__ == "__main__":
