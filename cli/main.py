@@ -58,6 +58,33 @@ def get_base64data(namespace, secret_name):
     return base64_data
 
 
+def get_realdata(base64_data, filename):
+    base64_data_keys = base64_data.get("data").keys()
+    logging.info(f"Decoding base64 data...")
+    for k in base64_data_keys:
+        base64_data_value = base64_data.get("data").get(k)
+        base64_data["data"][k] = base64.b64decode(base64_data_value).decode("utf-8")
+
+    with open(filename, "w") as tmp_real:
+        yaml.dump(base64_data, tmp_real)
+
+    logging.info(f"Decoded base64 data in tmp_real.")
+
+
+def get_encoded_base64data(filename):
+    with open(filename, "r") as tmp:
+        real_updated_data = yaml.safe_load(tmp)
+
+    data_keys = real_updated_data.get("data").keys()
+    logging.info("Encoding secrets to base64...")
+    for k in data_keys:
+        real_value = real_updated_data.get("data").get(k)
+        real_updated_data["data"][k] = base64.b64encode(bytes(real_value, "utf-8"))
+
+    logging.info("Encoded secrets to base64...")
+    return real_updated_data
+
+
 def validate_key(base64_data, secret_key):
     if secret_key in base64_data:
         return True
@@ -211,9 +238,47 @@ def add_secret(secret_file, add_data):
     run_kubeseal(secret_file, namespace)
 
 
+@click.command()
+@click.argument("secret_file", type=click.Path(exists=True))
+def open_editor(secret_file):
+    """Command to add/update new keys to sealed secrets interactively.
+
+    Example: python cli/main.py open-editor cap/environments/cap-qa/sealedsecrets/cap-creds.yml
+    """
+    logging.info(
+        "Reading yml file...",
+    )
+    with open(secret_file, "r") as tmp:
+        data = yaml.safe_load(tmp)
+    if not data:
+        logging.error("No data present. Please check your secret file!")
+        sys.exit(1)
+
+    namespace = data.get("metadata").get("namespace")
+    secret_name = data.get("metadata").get("name")
+    base64_data = get_base64data(namespace, secret_name)
+
+    get_realdata(base64_data, filename="tmp_real")
+    click.edit(filename="tmp_real")
+
+    # Encode the real data in base64
+    base64_data = get_encoded_base64data(filename="tmp_real")
+    os.remove("tmp_real")
+
+    # Keeping required metadata only
+    base64_data["metadata"] = {"name": secret_name, "namespace": namespace}
+    base64_data.pop("type", None)
+
+    with open("tmp", "w") as tmp:
+        yaml.dump(base64_data, tmp)
+
+    run_kubeseal(secret_file, namespace)
+
+
 secret_manager.add_command(view_secret)
 secret_manager.add_command(update_secret)
 secret_manager.add_command(add_secret)
+secret_manager.add_command(open_editor)
 
 
 if __name__ == "__main__":
