@@ -59,10 +59,10 @@ def get_base64data(namespace, secret_name):
 
 
 def get_realdata(base64_data, filename):
-    base64_data_keys = base64_data.get("data").keys()
+    base64_data_keys = base64_data.get("data", {}).keys()
     logging.info(f"Decoding base64 data...")
     for k in base64_data_keys:
-        base64_data_value = base64_data.get("data").get(k)
+        base64_data_value = base64_data.get("data", {}).get(k)
         base64_data["data"][k] = base64.b64decode(base64_data_value).decode("utf-8")
 
     with open(filename, "w") as tmp_real:
@@ -75,10 +75,10 @@ def get_encoded_base64data(filename):
     with open(filename, "r") as tmp:
         real_updated_data = yaml.safe_load(tmp)
 
-    data_keys = real_updated_data.get("data").keys()
+    data_keys = real_updated_data.get("data", {}).keys()
     logging.info("Encoding secrets to base64...")
     for k in data_keys:
-        real_value = real_updated_data.get("data").get(k)
+        real_value = real_updated_data.get("data", {}).get(k)
         real_updated_data["data"][k] = base64.b64encode(bytes(real_value, "utf-8"))
 
     logging.info("Encoded secrets to base64...")
@@ -100,6 +100,26 @@ def update_key(base64_data, key, new_value):
     return
 
 
+def extract_data_from_file(secret_file):
+    logging.info("Reading yml file...")
+    with open(secret_file, "r") as tmp:
+        data = yaml.safe_load(tmp)
+    if not data:
+        logging.error("No data present. Please check your secret file!")
+        sys.exit(1)
+    namespace = data.get("metadata", {}).get("namespace")
+    secret_name = data.get("metadata", {}).get("name")
+    if not namespace:
+        logging.error("Namespace not present. Please check the yml file.")
+        sys.exit(1)
+    if not secret_name:
+        logging.error("Secret name not present. Please check the yml file.")
+        sys.exit(1)
+    base64_data = get_base64data(namespace, secret_name)
+    base64_data_keys = base64_data.get("data").keys()
+    return namespace, secret_name, base64_data, base64_data_keys
+
+
 @click.group()
 def secret_manager():
     pass
@@ -118,19 +138,7 @@ def view_secret(secret_file, view_data):
     Example: python cli/main.py view-secret cap/environments/cap-qa/sealedsecrets/cap-creds.yml
     Example: python cli/main.py view-secret cap/environments/cap-qa/sealedsecrets/cap-creds.yml -d FLOWER_USER -d FLOWER_PASSWORD
     """
-    logging.info(
-        "Reading yml file...",
-    )
-    with open(secret_file, "r") as tmp:
-        data = yaml.safe_load(tmp)
-    if not data:
-        logging.error("No data present. Please check your secret file!")
-        sys.exit(1)
-
-    namespace = data.get("metadata").get("namespace")
-    secret_name = data.get("metadata").get("name")
-    base64_data = get_base64data(namespace, secret_name)
-    base64_data_keys = base64_data.get("data").keys()
+    _, _, base64_data, base64_data_keys = extract_data_from_file(secret_file)
 
     if view_data:
         base64_data_keys = [
@@ -157,19 +165,9 @@ def update_secret(secret_file, update_data):
 
     Example: python cli/main.py update-secret cap/environments/cap-qa/sealedsecrets/cap-creds.yml -d FLOWER_USER:NEW_VAL -d FLOWER_PASSWORD:MY_VAL
     """
-    logging.info(
-        "Reading yml file...",
+    namespace, secret_name, base64_data, base64_data_keys = extract_data_from_file(
+        secret_file
     )
-    with open(secret_file, "r") as tmp:
-        data = yaml.safe_load(tmp)
-    if not data:
-        logging.error("No data present. Please check your secret file!")
-        sys.exit(1)
-
-    namespace = data.get("metadata").get("namespace")
-    secret_name = data.get("metadata").get("name")
-    base64_data = get_base64data(namespace, secret_name)
-    base64_data_keys = base64_data.get("data").keys()
 
     if not update_data:
         logging.error("Please provide keys to update!")
@@ -203,19 +201,9 @@ def add_secret(secret_file, add_data):
 
     Example: python cli/main.py add-secret cap/environments/cap-qa/sealedsecrets/cap-creds.yml -d FLOWER_USER:NEW_VAL -d FLOWER_PASSWORD:MY_VAL
     """
-    logging.info(
-        "Reading yml file...",
+    namespace, secret_name, base64_data, base64_data_keys = extract_data_from_file(
+        secret_file
     )
-    with open(secret_file, "r") as tmp:
-        data = yaml.safe_load(tmp)
-    if not data:
-        logging.error("No data present. Please check your secret file!")
-        sys.exit(1)
-
-    namespace = data.get("metadata").get("namespace")
-    secret_name = data.get("metadata").get("name")
-    base64_data = get_base64data(namespace, secret_name)
-    base64_data_keys = base64_data.get("data").keys()
 
     if not add_data:
         logging.error("Please provide keys to add!")
@@ -245,18 +233,7 @@ def open_editor(secret_file):
 
     Example: python cli/main.py open-editor cap/environments/cap-qa/sealedsecrets/cap-creds.yml
     """
-    logging.info(
-        "Reading yml file...",
-    )
-    with open(secret_file, "r") as tmp:
-        data = yaml.safe_load(tmp)
-    if not data:
-        logging.error("No data present. Please check your secret file!")
-        sys.exit(1)
-
-    namespace = data.get("metadata").get("namespace")
-    secret_name = data.get("metadata").get("name")
-    base64_data = get_base64data(namespace, secret_name)
+    namespace, secret_name, base64_data, _ = extract_data_from_file(secret_file)
 
     get_realdata(base64_data, filename="tmp_real")
     click.edit(filename="tmp_real")
