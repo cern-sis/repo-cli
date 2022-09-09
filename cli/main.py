@@ -11,6 +11,45 @@ import yaml
 from git_root import git_root
 
 
+def run_git_check(secret_file):
+    logging.info("Verifying Secret file is same on local machine and Github...")
+    current_dir = os.getcwd()
+    parent_path = os.path.dirname(secret_file)
+    os.chdir(parent_path)
+    root_path = git_root(secret_file)
+
+    # Checking if secret file is staged locally
+    response = subprocess.Popen(
+        ["git", "diff", "--name-only", "--cached"], stdout=subprocess.PIPE
+    )
+    staged_files = response.communicate()[0].decode("utf-8").split("\n")
+    if any(root_path == git_root(staged) for staged in staged_files):
+        logging.info(
+            "Secret file is staged for changes. Please make it even with master to continue."
+        )
+        sys.exit(1)
+
+    # Checking if local repo and the github master are even
+    subprocess.run(["git", "fetch", "origin", "master"])
+    response = subprocess.Popen(
+        [
+            "git",
+            "diff",
+            "--stat",
+            "FETCH_HEAD",
+        ],
+        stdout=subprocess.PIPE,
+    )
+    diff = response.communicate()[0].decode("utf-8")
+    if diff:
+        logging.info(
+            "Local repository has some unmerged changes. Please make the master branch even with origin master to continue."
+        )
+        sys.exit(1)
+
+    os.chdir(current_dir)
+
+
 def run_kubeseal(secret_file, namespace):
     logging.info("Starting to seal the updated secrets...")
     current_dir = os.getcwd()
@@ -165,6 +204,7 @@ def update_secret(secret_file, update_data):
 
     Example: python cli/main.py update-secret cap/environments/cap-qa/sealedsecrets/cap-creds.yml -d FLOWER_USER:NEW_VAL -d FLOWER_PASSWORD:MY_VAL
     """
+    run_git_check(secret_file)
     namespace, secret_name, base64_data, base64_data_keys = extract_data_from_file(
         secret_file
     )
@@ -201,6 +241,7 @@ def add_secret(secret_file, add_data):
 
     Example: python cli/main.py add-secret cap/environments/cap-qa/sealedsecrets/cap-creds.yml -d FLOWER_USER:NEW_VAL -d FLOWER_PASSWORD:MY_VAL
     """
+    run_git_check(secret_file)
     namespace, secret_name, base64_data, base64_data_keys = extract_data_from_file(
         secret_file
     )
@@ -233,6 +274,7 @@ def open_editor(secret_file):
 
     Example: python cli/main.py open-editor cap/environments/cap-qa/sealedsecrets/cap-creds.yml
     """
+    run_git_check(secret_file)
     namespace, secret_name, base64_data, _ = extract_data_from_file(secret_file)
 
     get_realdata(base64_data, filename="tmp_real")
