@@ -88,7 +88,6 @@ def get_encoded_base64data(filename):
 def validate_key(base64_data, secret_key):
     if secret_key in base64_data:
         return True
-    logging.error(f"Invalid Secret Name: {secret_key}. Please check again!")
     return False
 
 
@@ -176,6 +175,7 @@ def update_secret(secret_file, update_data):
     requested_change = dict(secret.split(":", 1) for secret in update_data)
     for k, v in requested_change.items():
         if not validate_key(base64_data_keys, k):
+            logging.error(f"Invalid Secret Name: {k}. Please check again!")
             sys.exit(1)
         update_key(base64_data, k, v)
 
